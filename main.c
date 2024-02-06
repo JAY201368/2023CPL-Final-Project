@@ -60,7 +60,6 @@ typedef struct game {
 typedef struct img {
     SDL_Surface *surface;
     SDL_Texture *texture;
-    // TODO: 将pos整合进img对象中
     SDL_Rect pos;
 } IMG;
 
@@ -85,7 +84,6 @@ SDL_Event MainEvent;
 SDL_Renderer *Default_rdr = NULL;
 IMG StartMenu[2];
 IMG PauseMenu;
-IMG FailMenu;
 IMG Platform[10];
 IMG Chess;
 IMG Dashboard;
@@ -97,14 +95,17 @@ SDL_Rect StartButton = {150, 656, 280, 90};
 // TODO: 建立一种机制来定位平台, 即列举出平台所有的可能位置
 SDL_Rect DefaultPlatformPos[10] = {
         {289, 689, 200, 200},
-        {789, 689, 200, 200},
+        {489, 689, 200, 200},
         {489, 689, 200, 200},
         {589, 689, 200, 200},
         {689, 689, 200, 200},
         {789, 689, 200, 200},
         {789, 689, 200, 200},
 };
-SDL_Rect ChessPos = {370, 600, 50, 180};
+SDL_Rect ChessPos = {370,
+                     600,
+                     50,
+                     180};
 SDL_Rect BarPos = {0, 0, 0, 10};
 // plat_index指示当前使用的平台
 int plat_index = 0;
@@ -464,12 +465,17 @@ void DrawGame() {
         case pause_menu:
             // 绘制暂停菜单
             SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
+            SDL_RenderCopy(Default_rdr, QuitButton.texture, NULL, &QuitButton.pos);
             SDL_RenderCopy(Default_rdr, ResumeButton.texture, NULL, &ResumeButton.pos);
+            // 绘制计分板
+            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
             break;
         case lose_menu:
-            // 只能重来或退出
+            // 绘制失败菜单
             SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
             SDL_RenderCopy(Default_rdr, QuitButton.texture, NULL, &QuitButton.pos);
+            // 绘制计分板
+            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
             break;
         case jumping:
             // 在指定位置绘制两个平台
@@ -481,6 +487,7 @@ void DrawGame() {
             SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
             break;
         case gaining_momentum:
+            // 绘制平台
             SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
             SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
             // 绘制棋子
@@ -501,9 +508,10 @@ void DrawGame() {
             SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, NULL);
             break;
         case move_map:
-            // 绘制棋子与棋子所在的平台
+            // 绘制平台
             SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &SrcPlatform.pos);
             SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DstPlatform.pos);
+            // 绘制棋子
             SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
             // 绘制计分板
             SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
