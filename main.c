@@ -467,8 +467,9 @@ void DrawGame() {
             SDL_RenderCopy(Default_rdr, ResumeButton.texture, NULL, &ResumeButton.pos);
             break;
         case lose_menu:
-            // 只能重来
+            // 只能重来或退出
             SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
+            SDL_RenderCopy(Default_rdr, QuitButton.texture, NULL, &QuitButton.pos);
             break;
         case jumping:
             // 在指定位置绘制两个平台
