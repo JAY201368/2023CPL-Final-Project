@@ -4,7 +4,6 @@
 #include "SDL2/SDL_ttf.h"
 #include <stdio.h>
 #include <stdbool.h>
-#include <math.h>
 
 // 宏
 // 初始游戏窗口大小设定
@@ -12,11 +11,12 @@
 #define WINDOW_HEIGHT 822
 // 初始数值设定
 // TODO: 完善合理的初始数值设定
-#define DEFAULT_CHESS_POS_X 170
-#define DEFAULT_CHESS_POS_Y 400
+#define DEFAULT_CHESS_POS_X 370
+#define DEFAULT_CHESS_POS_Y 600
 #define DEFAULT_GRAVITY 10
-#define DEFAULT_MAX_VY 200
-#define DEFAULT_VX 5
+#define DEFAULT_MAX_VX 12
+#define DEFAULT_VY 10
+#define DEFAULT_VX_INC_SPEED 1
 
 // 函数宏
 // 处理SDL错误用宏封装简化
@@ -44,7 +44,7 @@ enum status {
 // 玩家数值设定
 typedef struct player {
     // 玩家数值
-    double MaxVy;
+    double MaxVx;
     double gravity;
     double Vx;
     double Vy;
@@ -54,7 +54,6 @@ typedef struct game {
     int mode;
     int score;
     int history_high;
-    int difficulty;
     bool end_game;
 } GAME;
 
@@ -63,13 +62,13 @@ typedef struct img {
     SDL_Texture *texture;
     // TODO: 将pos整合进img对象中
     SDL_Rect pos;
-} img;
+} IMG;
 
 PLAYER player = {
         .gravity = DEFAULT_GRAVITY,
-        .MaxVy = DEFAULT_MAX_VY,
-        .Vy = 0,
-        .Vx = DEFAULT_VX
+        .MaxVx = DEFAULT_MAX_VX,
+        .Vy = DEFAULT_VY,
+        .Vx = 0
 };
 
 GAME game = {
@@ -77,7 +76,6 @@ GAME game = {
         .score = 0,
         .mode = start_menu,
         .end_game = false,
-        .difficulty = 0
 };
 
 
@@ -85,91 +83,52 @@ GAME game = {
 SDL_Window *win;
 SDL_Event MainEvent;
 SDL_Renderer *Default_rdr = NULL;
-
-img StartMenu[2];
-img PauseMenu;
-img FailMenu;
-img Platform[10];
-img Chess;
-img Dashboard;
-img SrcPlatform, DstPlatform;
-
-SDL_Surface *bar_surface = NULL;
-// Textures拷贝图像纹理
-// Rects指示对象位置
+IMG StartMenu[2];
+IMG PauseMenu;
+IMG FailMenu;
+IMG Platform[10];
+IMG Chess;
+IMG Dashboard;
+IMG SrcPlatform, DstPlatform;
+IMG AgainButton;
+IMG QuitButton;
+IMG ResumeButton;
 SDL_Rect StartButton = {150, 656, 280, 90};
-SDL_Rect QuitButton;
-SDL_Rect AgainButton;
 // TODO: 建立一种机制来定位平台, 即列举出平台所有的可能位置
-SDL_Rect DefaultPlatformPos[2] = {
-        {89,  489, 200, 200},
-        {389, 489, 200, 200},
+SDL_Rect DefaultPlatformPos[10] = {
+        {289, 689, 200, 200},
+        {789, 689, 200, 200},
+        {489, 689, 200, 200},
+        {589, 689, 200, 200},
+        {689, 689, 200, 200},
+        {789, 689, 200, 200},
+        {789, 689, 200, 200},
 };
-SDL_Rect ChessPos = {170, 400, 50, 180};
+SDL_Rect ChessPos = {370, 600, 50, 180};
 SDL_Rect BarPos = {0, 0, 0, 10};
 // plat_index指示当前使用的平台
 int plat_index = 0;
+int last_mode = common;
 
 // 函数
-void DrawGame() {
-    // 更新游戏画面
-    // 先绘制背景, 顺便清除上一帧
-    SDL_SetRenderDrawColor(Default_rdr, 144, 144, 152, 255);
-    SDL_RenderClear(Default_rdr);
-    // 根据游戏模式分类讨论
-    switch (game.mode) {
-        case pause_menu:
-            // 绘制暂停菜单
-            SDL_RenderCopy(Default_rdr, PauseMenu.texture, NULL, NULL);
-            break;
-        case lose_menu:
-            // 绘制失败菜单
-            SDL_RenderCopy(Default_rdr, FailMenu.texture, NULL, NULL);
-            break;
-        case jumping:
-            // 在指定位置绘制两个平台
-            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
-            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
-            // 绘制棋子
-            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
-            // 绘制计分板
-            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, NULL);
-            break;
-        case gaining_momentum:
-            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
-            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
-            // 绘制棋子
-            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
-            // 绘制计分板
-            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, NULL);
-            // 绘制蓄力条
-            SDL_SetRenderDrawColor(Default_rdr, 255, 0, 0, 255); // 设置矩形的颜色为红色
-            SDL_RenderFillRect(Default_rdr, &BarPos); // 绘制矩形
-            break;
-        case common:
-            // 在指定位置绘制两个平台
-            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
-            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
-            // 绘制棋子
-            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
-            // 绘制计分板
-            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, NULL);
-            break;
-        case move_map:
-            // 仅绘制棋子与棋子所在的平台
-            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DstPlatform.pos);
-            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
-        default:;
+bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
+    // 为判断点击按钮而造的轮子
+    if (ButtonPos->x <= x && x <= ButtonPos->x + ButtonPos->w
+        && ButtonPos->y <= y && y <= ButtonPos->y + ButtonPos->h) {
+        return true;
+    } else {
+        return false;
     }
-    // 统一显示
-    SDL_RenderPresent(Default_rdr);
 }
 
 int InitSDL() {
     // 初始化SDL子系统
     if (SDL_Init(SDL_INIT_EVERYTHING)) {
-        printf("Can not init SDL\n");
-        SDL_GetError();
+        SDL_Log("Can not init SDL: %s\n", SDL_GetError());
+        return 1;
+    }
+    if (TTF_Init()) {
+        SDL_Log("Can not init TTF: %s\n", SDL_GetError());
         return 1;
     }
     // 建立窗口
@@ -193,17 +152,20 @@ int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
     return 0;
 }
 
+// TODO: 设置菜单按键位置
 int InitAllPics() {
     // 为所有图片资源分配surface和texture
     // 开始菜单贴图
     InitPic(&StartMenu[0].surface, &(StartMenu[0].texture), "start_menu/start_menu_common.jpeg");
     InitPic(&StartMenu[1].surface, &(StartMenu[1].texture), "start_menu/start_menu_pressed.jpeg");
     SDL_SetWindowSize(win, StartMenu[0].surface->w / 2, StartMenu[0].surface->h / 2);
-
-    // 暂停菜单贴图
-    InitPic(&PauseMenu.surface, &PauseMenu.texture, "pause_menu.jpeg");
-    // 失败菜单贴图
-    InitPic(&FailMenu.surface, &FailMenu.texture, "fail_menu.jpeg");
+    // 菜单贴图
+    InitPic(&AgainButton.surface, &AgainButton.texture, "buttons/again_button.PNG");
+    InitPic(&QuitButton.surface, &QuitButton.texture, "buttons/quit_button.PNG");
+    InitPic(&ResumeButton.surface, &ResumeButton.texture, "buttons/resume_button.PNG");
+    AgainButton.pos = (SDL_Rect) {150, 656, 280, 90};
+    ResumeButton.pos = (SDL_Rect) {450, 656, 100, 90};
+    QuitButton.pos = (SDL_Rect) {560, 656, 90, 90};
     // 计分板贴图
     InitPic(&Dashboard.surface, &Dashboard.texture, "dashboard.jpeg");
     // 平台贴图
@@ -216,15 +178,12 @@ int InitAllPics() {
     }
     // 玩家棋子贴图
     InitPic(&Chess.surface, &Chess.texture, "chess.png");
-    //蓄力条
-    bar_surface = SDL_GetWindowSurface(win);
     // bonus(彩蛋)贴图
-
     return 0;
 }
 
+// TODO: 完善销毁步骤
 void DestroyAll() {
-    // TODO: 完善销毁步骤
     SDL_FreeSurface(StartMenu[0].surface);
     SDL_FreeSurface(StartMenu[1].surface);
     SDL_FreeSurface(PauseMenu.surface);
@@ -237,12 +196,12 @@ void DestroyAll() {
     SDL_Quit();
 }
 
+// TODO: 恢复所有默认数值(除了历史最高分)
 void RefreshGame() {
     // 重开
     // 重置游戏状态
     game.mode = common;
     game.end_game = false;
-    game.difficulty = 0;
     game.score = 0;
     // 重置玩家数值
     ChessPos.x = DEFAULT_CHESS_POS_X;
@@ -252,29 +211,25 @@ void RefreshGame() {
     DefaultPlatformPos[1] = (SDL_Rect) {};
 }
 
-// 为判断点击按钮而造的轮子
-bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
-    if (ButtonPos->x <= x && x <= ButtonPos->x + ButtonPos->w
-        && ButtonPos->y <= y && y <= ButtonPos->y + ButtonPos->h) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
+// TODO: 丰富平台生成位置以及地图移动方式
 void MoveMap() {
+    ChessPos.y = 600;
     if (DstPlatform.pos.x >= DefaultPlatformPos[0].x) {
+        SrcPlatform.pos.x -= 15;
         DstPlatform.pos.x -= 5;
         ChessPos.x -= 5;
     } else {
         // 移动完毕, 加载下一个平台
         SrcPlatform = DstPlatform;
+        SrcPlatform.pos = DefaultPlatformPos[0];
         plat_index = (plat_index + 1) % 7;
         DstPlatform = Platform[(plat_index + 1) % 7];
+        DstPlatform.pos = DefaultPlatformPos[1];
         game.mode = common;
     }
 }
 
+// TODO: 优化碰撞检测
 void CheckLanded() {
     SDL_Log("Checking Landed or Not\n");
     bool landed = false;
@@ -297,7 +252,7 @@ void CheckLanded() {
         game.history_high = game.score >= game.history_high ? game.score : game.history_high;
         // 修改棋子和平台坐标->视角移动(使用循环和延迟不断更新画面)
         // 恢复玩家数值(跳跃距离)
-        player.Vy = 0;
+        player.Vx = 0;
         game.mode = move_map;
     } else {
         // 着陆失败, 显示结束菜单
@@ -309,37 +264,40 @@ void CheckLanded() {
     }
 }
 
+// TODO: 优化动画和手感
 void Jump() {
     // 实现跳跃
     // 修改状态, 还原数值
     BarPos.w = 0;
     game.mode = jumping;
     // 跳跃动画(按照运动的数学建模修改棋子坐标数值)
-    static double dt = 0;   // dt: 运动参数
+    static double dt = 1;   // dt: 运动参数
     ChessPos.x += (int) (player.Vx * dt);
-    ChessPos.y -= (int) (player.Vy * dt - player.gravity * dt * dt / 2);
-    dt += 0.2;
+    ChessPos.y -= (int) ((player.Vy * dt - player.gravity * dt * dt / 2) * 2);
+    dt += 0.1;
     // 完成跳跃
     if (ChessPos.y > DEFAULT_CHESS_POS_Y) {
         // 重置参数并退出跳跃过程
         SDL_Delay(500);
-        player.Vy = 0;
+        player.Vx = 0;
         dt = 0;
         game.mode = landing;
     }
 }
 
+// TODO: 优化蓄力速率数值
 void GainMomentum() {
     // 实现蓄力, 其中同时需要实现读条
     // 蓄力方式 -> 更改CurJumpDistance
-    BarPos.x = ChessPos.x - 100;
+    BarPos.x = ChessPos.x - 150;
     BarPos.y = ChessPos.y - 100;
-    if (player.Vy <= player.MaxVy) {
-        player.Vy++;
+    if (player.Vx <= player.MaxVx) {
+        player.Vx += DEFAULT_VX_INC_SPEED;
         BarPos.w += 10;
-        SDL_Delay(50);
+        SDL_Log("Current Vx = %f", player.Vx);
+        SDL_Delay(30);
     } else {
-        player.Vy = player.MaxVy;
+        player.Vx = player.MaxVx;
     }
 }
 
@@ -426,7 +384,8 @@ void ModeControl() {
                 SDL_Log("Quit Game\n");
                 game.end_game = true;
                 break;
-            case SDL_KEYDOWN: // 键盘点击事件, 处理玩家操作
+            case SDL_KEYDOWN:
+                // 键盘点击事件, 处理玩家操作
                 if (MainEvent.key.keysym.sym == SDLK_SPACE) {
                     // 空格键
                     // 游戏中(非跳跃过程中)按下空格 -> 蓄力
@@ -440,29 +399,38 @@ void ModeControl() {
                     if (game.mode == common || game.mode == jumping ||
                         game.mode == gaining_momentum || game.mode == landing) {
                         SDL_Log("Game Paused\n");
+                        last_mode = game.mode;
                         game.mode = pause_menu;
                     }
                 }
                 break;
             case SDL_KEYUP:
                 // 蓄力中松开空格键, 起跳
-                if (game.mode == gaining_momentum) {
-                    SDL_Log("Jump!\n");
-                    Jump();
+                if (MainEvent.key.keysym.sym == SDLK_SPACE) {
+                    if (game.mode == gaining_momentum) {
+                        SDL_Log("Jump!\n");
+                        Jump();
+                    }
                 }
                 break;
             case SDL_MOUSEBUTTONDOWN: // 鼠标点击事件, 用于处理点击菜单中的按钮
                 SDL_Log("Mouse Click Position: x = %d, y = %d", MainEvent.button.x, MainEvent.button.y);
                 int cur_x = MainEvent.button.x, cur_y = MainEvent.button.y;
                 if (game.mode == lose_menu || game.mode == pause_menu) {
-                    if (MyPointInRect(&QuitButton, cur_x, cur_y)) {
+                    if (MyPointInRect(&QuitButton.pos, cur_x, cur_y)) {
                         // 退出
                         SDL_Log("Quit Game\n");
                         game.end_game = true;
-                    } else if (MyPointInRect(&AgainButton, cur_x, cur_y)) {
+                    } else if (MyPointInRect(&AgainButton.pos, cur_x, cur_y)) {
                         // 重开, 保留历史最高分, 清除现有得分,游戏时间以及难度系数
                         SDL_Log("Game Refreshed\n");
                         RefreshGame();
+                    }
+                }
+                if (game.mode == pause_menu) {
+                    if (MyPointInRect(&ResumeButton.pos, cur_x, cur_y)) {
+                        // 还原原状态即继续执行原任务
+                        game.mode = last_mode;
                     }
                 }
                 break;
@@ -471,7 +439,7 @@ void ModeControl() {
     }
 }
 
-void Update() {
+void UpdateData() {
     if (game.mode == gaining_momentum) {
         GainMomentum();
     }
@@ -484,6 +452,64 @@ void Update() {
     if (game.mode == move_map) {
         MoveMap();
     }
+}
+
+void DrawGame() {
+    // 更新游戏画面
+    // 先绘制背景, 顺便清除上一帧
+    SDL_SetRenderDrawColor(Default_rdr, 144, 144, 152, 255);
+    SDL_RenderClear(Default_rdr);
+    // 根据游戏模式分类讨论
+    switch (game.mode) {
+        case pause_menu:
+            // 绘制暂停菜单
+            SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
+            SDL_RenderCopy(Default_rdr, ResumeButton.texture, NULL, &ResumeButton.pos);
+            break;
+        case lose_menu:
+            // 只能重来
+            SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
+            break;
+        case jumping:
+            // 在指定位置绘制两个平台
+            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
+            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
+            // 绘制棋子
+            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
+            // 绘制计分板
+            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
+            break;
+        case gaining_momentum:
+            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
+            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
+            // 绘制棋子
+            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
+            // 绘制计分板
+            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
+            // 绘制蓄力条
+            SDL_SetRenderDrawColor(Default_rdr, 235, 169, 104, 255);
+            SDL_RenderFillRect(Default_rdr, &BarPos);
+            break;
+        case common:
+            // 在指定位置绘制两个平台
+            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
+            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
+            // 绘制棋子
+            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
+            // 绘制计分板
+            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, NULL);
+            break;
+        case move_map:
+            // 绘制棋子与棋子所在的平台
+            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &SrcPlatform.pos);
+            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DstPlatform.pos);
+            SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &ChessPos);
+            // 绘制计分板
+            SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
+        default:;
+    }
+    // 统一显示
+    SDL_RenderPresent(Default_rdr);
 }
 
 int main() {
@@ -499,7 +525,7 @@ int main() {
         // 接收操作, 更改模式
         ModeControl();
         // 更新参数
-        Update();
+        UpdateData();
         // 更新动画
         DrawGame();
         // 控制帧率
