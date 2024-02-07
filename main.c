@@ -14,9 +14,9 @@
 #define DEFAULT_CHESS_POS_X 160
 #define DEFAULT_CHESS_POS_Y 400
 #define DEFAULT_GRAVITY 12
-#define DEFAULT_MAX_VX 12
-#define DEFAULT_VY 10
-#define DEFAULT_VX_INC_SPEED 1
+#define DEFAULT_MAX_VX 40
+#define DEFAULT_VY 50
+#define DEFAULT_VX_INC_SPEED 5
 
 // 函数宏
 // 处理SDL错误用宏封装简化
@@ -95,7 +95,7 @@ SDL_Rect StartButton = {150,
                         656,
                         280,
                         90};
-// TODO: 建立一种机制来定位平台, 即列举出平台所有的可能位置
+// TODO: 丰富平台位置
 SDL_Rect DefaultPlatformPos[10] = {
         {104, 450, 160, 160},
         {389, 450, 160, 160},
@@ -104,6 +104,7 @@ TTF_Font *DefaultFont;
 // plat_index指示当前使用的平台
 int plat_index = 0;
 int last_mode = common;
+int prev_chess_pos_x;
 
 // 函数
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
@@ -152,18 +153,18 @@ int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
 int InitAllPics() {
     // 为所有图片资源分配surface和texture
     // 开始菜单贴图
-    InitPic(&StartMenu[0].surface, &(StartMenu[0].texture), "start_menu/start_menu_common.jpeg");
-    InitPic(&StartMenu[1].surface, &(StartMenu[1].texture), "start_menu/start_menu_pressed.jpeg");
+    InitPic(&StartMenu[0].surface, &(StartMenu[0].texture), "res/start_menu/start_menu_common.jpeg");
+    InitPic(&StartMenu[1].surface, &(StartMenu[1].texture), "res/start_menu/start_menu_pressed.jpeg");
     SDL_SetWindowSize(win, StartMenu[0].surface->w / 2, StartMenu[0].surface->h / 2);
     // 菜单按键贴图
-    InitPic(&AgainButton.surface, &AgainButton.texture, "buttons/again_button.PNG");
-    InitPic(&QuitButton.surface, &QuitButton.texture, "buttons/quit_button.PNG");
-    InitPic(&ResumeButton.surface, &ResumeButton.texture, "buttons/resume_button.PNG");
+    InitPic(&AgainButton.surface, &AgainButton.texture, "res/buttons/again_button.PNG");
+    InitPic(&QuitButton.surface, &QuitButton.texture, "res/buttons/quit_button.PNG");
+    InitPic(&ResumeButton.surface, &ResumeButton.texture, "res/buttons/resume_button.PNG");
     AgainButton.pos = (SDL_Rect) {20, 450, 280, 90};
     ResumeButton.pos = (SDL_Rect) {330, 450, 80, 80};
     QuitButton.pos = (SDL_Rect) {450, 450, 80, 80};
     // 字体
-    DefaultFont = TTF_OpenFont("GenshinDefault.ttf", 50);
+    DefaultFont = TTF_OpenFont("res/GenshinDefault.ttf", 50);
     CurMark.pos = (SDL_Rect) {20, 20, 100, 50};
     HistoryMark.pos = (SDL_Rect) {20, 100, 200, 50};
     // 计分板贴图
@@ -171,12 +172,12 @@ int InitAllPics() {
     for (int i = 0; i < 7; ++i) {
         char filename[30] = {0};
         // 生成文件名
-        sprintf(filename, "platforms/platform_%d.png", i + 1);
+        sprintf(filename, "res/platforms/platform_%d.png", i + 1);
         InitPic(&Platform[i].surface, &Platform[i].texture, filename);
         Platform[i].pos = DefaultPlatformPos[i % 2];
     }
     // 玩家棋子贴图
-    InitPic(&Chess.surface, &Chess.texture, "chess.png");
+    InitPic(&Chess.surface, &Chess.texture, "res/chess.png");
     Chess.pos.w = 30, Chess.pos.h = 100;
     // 蓄力条
     Bar.pos = (SDL_Rect) {DEFAULT_CHESS_POS_X - 40, DEFAULT_CHESS_POS_Y - 40, 0, 10};
@@ -210,7 +211,6 @@ void DestroyAll() {
 }
 
 // 游戏相关函数
-// TODO: 恢复所有默认数值(除了历史最高分)
 void RestartGame() {
     // 重开
     // 重置游戏状态
@@ -266,11 +266,12 @@ void CheckLanded() {
             // 大平台加一分
             game.score++;
         }
-        game.history_high = game.score >= game.history_high ? game.score : game.history_high;
+        game.history_high = (game.score >= game.history_high) ? game.score : game.history_high;
         // 修改棋子和平台坐标->视角移动(使用循环和延迟不断更新画面)
         // 恢复玩家数值(跳跃距离)
         player.Vx = 0;
         // 更改游戏模式
+        SDL_Log("Moving Map\n");
         game.mode = move_map;
     } else {
         // 着陆失败, 显示结束菜单
@@ -289,17 +290,18 @@ void Jump() {
     Bar.pos.w = 0;
     game.mode = jumping;
     // 跳跃动画(按照运动的数学建模修改棋子坐标数值)
-    static double dt = 1;   // dt: 运动参数
-    Chess.pos.x += (int) (player.Vx * dt);
-    Chess.pos.y -= (int) ((player.Vy * dt - player.gravity * dt * dt / 2) * 2);
-    dt += 0.1;
-    // 完成跳跃
-    if (Chess.pos.y > DEFAULT_CHESS_POS_Y) {
+    static double dt = 0;   // dt: 运动参数
+    if (Chess.pos.y <= DEFAULT_CHESS_POS_Y) {
+        Chess.pos.x = prev_chess_pos_x + (int) (player.Vx * dt);
+        Chess.pos.y = DEFAULT_CHESS_POS_Y - (int) ((player.Vy * dt - player.gravity * dt * dt / 2) * 2);
+        dt += 0.01;
+    } else {
         // 重置参数并退出跳跃过程
-        SDL_Delay(500);
+        Chess.pos.y = DEFAULT_CHESS_POS_Y;
         player.Vx = 0;
         dt = 0;
         game.mode = landing;
+        SDL_Delay(500);
     }
 }
 
@@ -307,6 +309,7 @@ void Jump() {
 void GainMomentum() {
     // 实现蓄力, 其中同时需要实现读条
     // 蓄力方式 -> 更改CurJumpDistance
+    prev_chess_pos_x = Chess.pos.x;
     Bar.pos.x = Chess.pos.x - 40;
     Bar.pos.y = Chess.pos.y - 40;
     BarWrapper.pos.x = Bar.pos.x;
@@ -438,7 +441,6 @@ void ModeControl() {
             case SDL_MOUSEBUTTONDOWN: // 鼠标点击事件, 用于处理点击菜单中的按钮
                 SDL_Log("Mouse Click Position: x = %d, y = %d", MainEvent.button.x, MainEvent.button.y);
                 int cur_x = MainEvent.button.x, cur_y = MainEvent.button.y;
-//                Chess.pos.x = cur_x, Chess.pos.y = cur_y;
                 if (game.mode == lose_menu || game.mode == pause_menu) {
                     if (MyPointInRect(&QuitButton.pos, cur_x, cur_y)) {
                         // 退出
@@ -467,7 +469,6 @@ void UpdateData() {
         GainMomentum();
     }
     if (game.mode == jumping) {
-        SDL_Log("Jump!\n");
         Jump();
     }
     if (game.mode == landing) {
@@ -475,7 +476,6 @@ void UpdateData() {
         CheckLanded();
     }
     if (game.mode == move_map) {
-        SDL_Log("Moving Map\n");
         MoveMap();
     }
 }
@@ -567,7 +567,7 @@ int main() {
         // 更新动画
         DrawGame();
         // 控制帧率
-        SDL_Delay(16);
+        SDL_Delay(4);
     }
     // 有开就有关
     DestroyAll();
