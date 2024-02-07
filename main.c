@@ -88,21 +88,19 @@ IMG Platform[10];
 IMG Chess;
 IMG Dashboard;
 IMG SrcPlatform, DstPlatform;
-IMG AgainButton;
-IMG QuitButton;
-IMG ResumeButton;
-SDL_Rect StartButton = {150, 656, 280, 90};
+IMG AgainButton, QuitButton, ResumeButton;
+IMG Bar, BarWrapper;
+IMG CurMark, HistoryMark;
+SDL_Rect StartButton = {150,
+                        656,
+                        280,
+                        90};
 // TODO: 建立一种机制来定位平台, 即列举出平台所有的可能位置
 SDL_Rect DefaultPlatformPos[10] = {
         {104, 450, 160, 160},
         {389, 450, 160, 160},
-        {489, 450, 200, 200},
-        {589, 450, 200, 200},
-        {689, 450, 200, 200},
-        {789, 450, 200, 200},
-        {789, 450, 200, 200},
 };
-SDL_Rect BarPos = {0, 0, 0, 10};
+TTF_Font *DefaultFont;
 // plat_index指示当前使用的平台
 int plat_index = 0;
 int last_mode = common;
@@ -118,6 +116,7 @@ bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
     }
 }
 
+// SDL相关函数
 int InitSDL() {
     // 初始化SDL子系统
     if (SDL_Init(SDL_INIT_EVERYTHING)) {
@@ -163,8 +162,11 @@ int InitAllPics() {
     AgainButton.pos = (SDL_Rect) {20, 450, 280, 90};
     ResumeButton.pos = (SDL_Rect) {330, 450, 80, 80};
     QuitButton.pos = (SDL_Rect) {450, 450, 80, 80};
+    // 字体
+    DefaultFont = TTF_OpenFont("GenshinDefault.ttf", 50);
+    CurMark.pos = (SDL_Rect) {20, 20, 100, 50};
+    HistoryMark.pos = (SDL_Rect) {20, 100, 200, 50};
     // 计分板贴图
-    InitPic(&Dashboard.surface, &Dashboard.texture, "dashboard.jpeg");
     // 平台贴图
     for (int i = 0; i < 7; ++i) {
         char filename[30] = {0};
@@ -176,26 +178,40 @@ int InitAllPics() {
     // 玩家棋子贴图
     InitPic(&Chess.surface, &Chess.texture, "chess.png");
     Chess.pos.w = 30, Chess.pos.h = 100;
+    // 蓄力条
+    Bar.pos = (SDL_Rect) {DEFAULT_CHESS_POS_X - 40, DEFAULT_CHESS_POS_Y - 40, 0, 10};
+    BarWrapper.pos = (SDL_Rect) {DEFAULT_CHESS_POS_X - 40, DEFAULT_CHESS_POS_Y - 40, 120, 10};
     // bonus(彩蛋)贴图
     return 0;
 }
 
-// TODO: 完善销毁步骤
+void DestroyPic(IMG pic) {
+    SDL_FreeSurface(pic.surface);
+    SDL_DestroyTexture(pic.texture);
+}
+
 void DestroyAll() {
-    SDL_FreeSurface(StartMenu[0].surface);
-    SDL_FreeSurface(StartMenu[1].surface);
-    SDL_FreeSurface(PauseMenu.surface);
-    SDL_DestroyWindowSurface(win);
-    SDL_DestroyTexture(StartMenu[0].texture);
-    SDL_DestroyTexture(StartMenu[1].texture);
-    SDL_DestroyTexture(PauseMenu.texture);
+    for (int i = 0; i < 2; ++i) {
+        DestroyPic(StartMenu[i]);
+    }
+    DestroyPic(PauseMenu);
+    for (int i = 0; i < 10; ++i) {
+        DestroyPic(Platform[i]);
+    }
+    DestroyPic(Chess);
+    DestroyPic(SrcPlatform);
+    DestroyPic(DstPlatform);
+    DestroyPic(AgainButton);
+    DestroyPic(QuitButton);
+    DestroyPic(ResumeButton);
     SDL_DestroyRenderer(Default_rdr);
     SDL_DestroyWindow(win);
     SDL_Quit();
 }
 
+// 游戏相关函数
 // TODO: 恢复所有默认数值(除了历史最高分)
-void RefreshGame() {
+void RestartGame() {
     // 重开
     // 重置游戏状态
     game.mode = common;
@@ -223,9 +239,9 @@ void MoveMap() {
     } else {
         // 移动完毕, 加载下一个平台
         SrcPlatform = DstPlatform;
-        SrcPlatform.pos = DefaultPlatformPos[0];
         plat_index = (plat_index + 1) % 7;
         DstPlatform = Platform[(plat_index + 1) % 7];
+        SrcPlatform.pos = DefaultPlatformPos[0];
         DstPlatform.pos = DefaultPlatformPos[1];
         game.mode = common;
     }
@@ -233,7 +249,6 @@ void MoveMap() {
 
 // TODO: 优化碰撞检测
 void CheckLanded() {
-    SDL_Log("Checking Landed or Not\n");
     bool landed = false;
     // 判断是否成功着陆, 即碰撞检测
     if (DstPlatform.pos.x <= Chess.pos.x + Chess.pos.w &&
@@ -267,11 +282,11 @@ void CheckLanded() {
     }
 }
 
-// TODO: 优化动画和手感
+// TODO: 优化运动建模和手感
 void Jump() {
     // 实现跳跃
     // 修改状态, 还原数值
-    BarPos.w = 0;
+    Bar.pos.w = 0;
     game.mode = jumping;
     // 跳跃动画(按照运动的数学建模修改棋子坐标数值)
     static double dt = 1;   // dt: 运动参数
@@ -292,11 +307,15 @@ void Jump() {
 void GainMomentum() {
     // 实现蓄力, 其中同时需要实现读条
     // 蓄力方式 -> 更改CurJumpDistance
-    BarPos.x = Chess.pos.x - 150;
-    BarPos.y = Chess.pos.y - 100;
+    Bar.pos.x = Chess.pos.x - 40;
+    Bar.pos.y = Chess.pos.y - 40;
+    BarWrapper.pos.x = Bar.pos.x;
     if (player.Vx <= player.MaxVx) {
         player.Vx += DEFAULT_VX_INC_SPEED;
-        BarPos.w += 10;
+        Bar.pos.w += 10;
+        if (Bar.pos.w >= 120) {
+            Bar.pos.w = 120;
+        }
         SDL_Log("Current Vx = %f", player.Vx);
         SDL_Delay(30);
     } else {
@@ -324,7 +343,7 @@ void StartGame() {
     SDL_Delay(100);
     // 正式启动游戏
     // 刷新游戏
-    RefreshGame();
+    RestartGame();
     // 显示背景
     SDL_SetRenderDrawColor(Default_rdr, 144, 144, 152, 255);
     SDL_RenderClear(Default_rdr);
@@ -398,8 +417,9 @@ void ModeControl() {
                 } else if (MainEvent.key.keysym.sym == SDLK_ESCAPE) {
                     // Esc键
                     // 游戏中(除菜单界面外)按下Esc -> 退出游戏, 进入暂停菜单
-                    if (game.mode == common || game.mode == jumping ||
-                        game.mode == gaining_momentum || game.mode == landing) {
+                    if (game.mode == common || game.mode == jumping
+                        || game.mode == gaining_momentum || game.mode == landing
+                        || game.mode == move_map) {
                         SDL_Log("Game Paused\n");
                         last_mode = game.mode;
                         game.mode = pause_menu;
@@ -427,7 +447,7 @@ void ModeControl() {
                     } else if (MyPointInRect(&AgainButton.pos, cur_x, cur_y)) {
                         // 重开, 保留历史最高分, 清除现有得分,游戏时间以及难度系数
                         SDL_Log("Game Refreshed\n");
-                        RefreshGame();
+                        RestartGame();
                     }
                 }
                 if (game.mode == pause_menu) {
@@ -447,17 +467,35 @@ void UpdateData() {
         GainMomentum();
     }
     if (game.mode == jumping) {
+        SDL_Log("Jump!\n");
         Jump();
     }
     if (game.mode == landing) {
+        SDL_Log("Checking Landed or Not\n");
         CheckLanded();
     }
     if (game.mode == move_map) {
+        SDL_Log("Moving Map\n");
         MoveMap();
     }
 }
 
-// TODO: 绘制计分板
+void ShowMark() {
+    // 绘制计分板
+    char *cur_mark = malloc(sizeof(char) * 20);
+    char *history_mark = malloc(sizeof(char) * 20);
+    sprintf(cur_mark, "Score: %d", game.score);
+    sprintf(history_mark, "History High: %d", game.history_high);
+    // 为防止内存泄漏, 记得及时清除
+    CurMark.surface = TTF_RenderText_Blended(DefaultFont, cur_mark, (SDL_Color) {235, 169, 104, 255});
+    CurMark.texture = SDL_CreateTextureFromSurface(Default_rdr, CurMark.surface);
+    HistoryMark.surface = TTF_RenderText_Blended(DefaultFont, history_mark, (SDL_Color) {235, 169, 104, 255});
+    HistoryMark.texture = SDL_CreateTextureFromSurface(Default_rdr, HistoryMark.surface);
+    SDL_RenderCopy(Default_rdr, CurMark.texture, NULL, &CurMark.pos);
+    SDL_RenderCopy(Default_rdr, HistoryMark.texture, NULL, &HistoryMark.pos);
+    free(cur_mark), free(history_mark);
+}
+
 void DrawGame() {
     // 更新游戏画面
     // 先绘制背景, 顺便清除上一帧
@@ -486,7 +524,10 @@ void DrawGame() {
             SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &Chess.pos);
             // 绘制蓄力条
             SDL_SetRenderDrawColor(Default_rdr, 235, 169, 104, 255);
-            SDL_RenderFillRect(Default_rdr, &BarPos);
+            SDL_RenderFillRect(Default_rdr, &Bar.pos);
+            SDL_RenderDrawRect(Default_rdr, &BarWrapper.pos);
+            // 绘制计分板
+            ShowMark();
             break;
         default:
             // 绘制平台
@@ -494,9 +535,19 @@ void DrawGame() {
             SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DstPlatform.pos);
             // 绘制棋子
             SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &Chess.pos);
+            // 绘制计分板
+            ShowMark();
     }
     // 统一显示
     SDL_RenderPresent(Default_rdr);
+    if (game.mode != start_menu && game.mode != pause_menu
+        && game.mode != lose_menu && game.mode != launching) {
+        // SDL不能free空指针
+        SDL_FreeSurface(CurMark.surface);
+        SDL_FreeSurface(HistoryMark.surface);
+        SDL_DestroyTexture(CurMark.texture);
+        SDL_DestroyTexture(HistoryMark.texture);
+    }
 }
 
 int main() {
