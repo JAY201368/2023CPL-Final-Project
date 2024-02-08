@@ -241,7 +241,7 @@ int InitAllPics() {
     CurMark.pos = (SDL_Rect) {20, 20, 100, 50};
     HistoryMark.pos = (SDL_Rect) {20, 100, 200, 50};
     for (int i = 0; i < 3; ++i) {
-        char *msg = malloc(10);
+        char *msg = malloc(sizeof(char) * 10);
         sprintf(msg, "Level %d", i + 1);
         InitWordMsg(&(LevelMsg[i]), msg, (SDL_Rect) {500, 20, 100, 50}, (SDL_Color) {255, 255, 255, 255});
         free(msg);
