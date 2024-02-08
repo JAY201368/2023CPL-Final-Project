@@ -72,26 +72,43 @@ GAME game;
 SDL_Window *win;
 SDL_Event MainEvent;
 SDL_Renderer *Default_rdr = NULL;
-IMG StartMenu[2];
 IMG PauseMenu;
 IMG Platform[10];
 IMG Chess;
-IMG Dashboard;
 IMG SrcPlatform, DstPlatform;
-IMG AgainButton, QuitButton, ResumeButton;
+IMG StartButton, AgainButton, QuitButton, ResumeButton;
 IMG Bar, BarWrapper;
 IMG CurMark, HistoryMark;
-SDL_Rect StartButton = {150, 656, 280, 90};
-// TODO: 丰富平台位置
-SDL_Rect DefaultPlatformPos[10] = {
+IMG StartWords;
+IMG StartChess;
+IMG FailMsg, PauseMsg;
+// TODO: 调整开始菜单元素位置
+SDL_Rect StartButtonPos[2] = {
+        {170, 656, 280, 90},
+        {185, 656, 260, 80}
+};
+SDL_Rect DefaultPlatformPos[2] = {
         {104, 450, 160, 160},
         {389, 450, 160, 160},
+};
+// TODO: 丰富平台位置
+SDL_Rect ExtendedPlatformPos[10] = {
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
+        {0, 450, 160, 160},
 };
 TTF_Font *DefaultFont;
 // plat_index指示当前使用的平台
 int plat_index = 0;
 int last_mode = common;
-int prev_chess_pos_x;
+int prev_chess_pos_x = 0;
 
 // 函数
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
@@ -140,20 +157,28 @@ int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
 int InitAllPics() {
     // 为所有图片资源分配surface和texture
     // 开始菜单贴图
-    InitPic(&StartMenu[0].surface, &(StartMenu[0].texture), "res/start_menu/start_menu_common.jpeg");
-    InitPic(&StartMenu[1].surface, &(StartMenu[1].texture), "res/start_menu/start_menu_pressed.jpeg");
-    SDL_SetWindowSize(win, StartMenu[0].surface->w / 2, StartMenu[0].surface->h / 2);
+    InitPic(&StartButton.surface, &StartButton.texture, "res/buttons/start_button.PNG");
+    InitPic(&StartWords.surface, &StartWords.texture, "res/start_menu/Word.PNG");
+    InitPic(&StartChess.surface, &StartChess.texture, "res/start_menu/Chess.PNG");
+    StartWords.pos = (SDL_Rect) {200, 100, 200, 60};
+    StartChess.pos = (SDL_Rect) {175, 300, 200, 200};
     // 菜单按键贴图
     InitPic(&AgainButton.surface, &AgainButton.texture, "res/buttons/again_button.PNG");
     InitPic(&QuitButton.surface, &QuitButton.texture, "res/buttons/quit_button.PNG");
     InitPic(&ResumeButton.surface, &ResumeButton.texture, "res/buttons/resume_button.PNG");
-    AgainButton.pos = (SDL_Rect) {20, 450, 280, 90};
-    ResumeButton.pos = (SDL_Rect) {330, 450, 80, 80};
-    QuitButton.pos = (SDL_Rect) {450, 450, 80, 80};
+    AgainButton.pos = (SDL_Rect) {50, 450, 280, 90};
+    ResumeButton.pos = (SDL_Rect) {480, 450, 80, 80};
+    QuitButton.pos = (SDL_Rect) {360, 450, 80, 80};
     // 字体
     DefaultFont = TTF_OpenFont("res/GenshinDefault.ttf", 50);
     CurMark.pos = (SDL_Rect) {20, 20, 100, 50};
     HistoryMark.pos = (SDL_Rect) {20, 100, 200, 50};
+    PauseMsg.surface = TTF_RenderText_Blended(DefaultFont, "Game Paused", (SDL_Color) {255, 255, 255, 255});
+    PauseMsg.texture = SDL_CreateTextureFromSurface(Default_rdr, PauseMsg.surface);
+    FailMsg.surface = TTF_RenderText_Blended(DefaultFont, "You Lose", (SDL_Color) {255, 255, 255, 255});
+    FailMsg.texture = SDL_CreateTextureFromSurface(Default_rdr, FailMsg.surface);
+    PauseMsg.pos = (SDL_Rect) {200, 300, 200, 60};
+    FailMsg.pos = (SDL_Rect) {200, 300, 200, 100};
     // 计分板贴图
     // 平台贴图
     for (int i = 0; i < 7; ++i) {
@@ -179,19 +204,19 @@ void DestroyPic(IMG pic) {
 }
 
 void DestroyAll() {
-    for (int i = 0; i < 2; ++i) {
-        DestroyPic(StartMenu[i]);
-    }
+    DestroyPic(StartChess);
+    DestroyPic(StartWords);
     DestroyPic(PauseMenu);
-    for (int i = 0; i < 10; ++i) {
-        DestroyPic(Platform[i]);
-    }
     DestroyPic(Chess);
     DestroyPic(SrcPlatform);
     DestroyPic(DstPlatform);
+    DestroyPic(StartButton);
     DestroyPic(AgainButton);
     DestroyPic(QuitButton);
     DestroyPic(ResumeButton);
+    for (int i = 0; i < 10; ++i) {
+        DestroyPic(Platform[i]);
+    }
     SDL_DestroyRenderer(Default_rdr);
     SDL_DestroyWindow(win);
     SDL_Quit();
@@ -251,6 +276,7 @@ void CheckLanded() {
         landed = false;
     }
     if (landed == true) {
+        SDL_Log("Nice Jump!\n");
         // 加分
         if (plat_index == 2 || plat_index == 5) {
             // 小平台加两分
@@ -318,36 +344,6 @@ void GainMomentum() {
     }
 }
 
-void StartMenuPressed() {
-    // 准备启动
-    // 修改游戏状态
-    game.mode = launching;
-    // 显示按下按钮之后的图片
-    SDL_RenderClear(Default_rdr);
-    SDL_RenderPresent(Default_rdr);
-}
-
-void StartGame() {
-    // 切换游戏模式
-    game.mode = common;
-    // 显示一段时间的原始菜单(模拟按钮回弹效果)
-    SDL_RenderClear(Default_rdr);
-    SDL_RenderCopy(Default_rdr, StartMenu[0].texture, NULL, NULL);
-    SDL_RenderPresent(Default_rdr);
-    SDL_Delay(100);
-    // 正式启动游戏
-    // 刷新游戏
-    RestartGame();
-//    // 显示背景
-//    SDL_SetRenderDrawColor(Default_rdr, 144, 144, 152, 255);
-//    SDL_RenderClear(Default_rdr);
-//    // 初始化两个平台一个棋子
-//    SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
-//    SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
-//    SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &Chess.pos);
-    SDL_Log("Game Start!\n");
-}
-
 void ModeControl() {
     // 处理可能发生的玩家行为
     // 需要实现异步, 必须通过轮询(PollEvent)而不能等待(WaitEvent)
@@ -394,7 +390,7 @@ void ModeControl() {
                 SDL_Log("Mouse Click Position: x = %d, y = %d", MainEvent.button.x, MainEvent.button.y);
                 int cur_x = MainEvent.button.x, cur_y = MainEvent.button.y;
                 if (game.mode == start_menu &&
-                    MyPointInRect(&StartButton, MainEvent.button.x, MainEvent.button.y)) {
+                    MyPointInRect(&StartButtonPos[0], MainEvent.button.x, MainEvent.button.y)) {
                     // 开始菜单点击
                     SDL_Log("Start Button Pressed\n");
                     game.mode = launching;
@@ -413,6 +409,7 @@ void ModeControl() {
                 if (game.mode == pause_menu) {
                     if (MyPointInRect(&ResumeButton.pos, cur_x, cur_y)) {
                         // 还原原状态即继续执行原任务
+                        SDL_Log("Game Resumed\n");
                         game.mode = last_mode;
                     }
                 }
@@ -434,7 +431,6 @@ void UpdateData() {
         Jump();
     }
     if (game.mode == landing) {
-        SDL_Log("Checking Landed or Not\n");
         CheckLanded();
     }
     if (game.mode == move_map) {
@@ -449,7 +445,7 @@ void ShowMark() {
     sprintf(cur_mark, "Score: %d", game.score);
     sprintf(history_mark, "History High: %d", game.history_high);
     // 为防止内存泄漏, 记得及时清除
-    CurMark.surface = TTF_RenderText_Blended(DefaultFont, cur_mark, (SDL_Color) {235, 169, 104, 255});
+    CurMark.surface = TTF_RenderText_Blended(DefaultFont, cur_mark, (SDL_Color) {255, 255, 255, 255});
     CurMark.texture = SDL_CreateTextureFromSurface(Default_rdr, CurMark.surface);
     HistoryMark.surface = TTF_RenderText_Blended(DefaultFont, history_mark, (SDL_Color) {235, 169, 104, 255});
     HistoryMark.texture = SDL_CreateTextureFromSurface(Default_rdr, HistoryMark.surface);
@@ -463,32 +459,39 @@ void DrawGame() {
     // 先绘制背景, 顺便清除上一帧
     SDL_SetRenderDrawColor(Default_rdr, 144, 144, 152, 255);
     SDL_RenderClear(Default_rdr);
-    // 绘制计分板
-    SDL_RenderCopy(Default_rdr, Dashboard.texture, NULL, &Dashboard.pos);
     // 根据游戏模式分类讨论
     switch (game.mode) {
         case start_menu:
             // 绘制开始菜单
-            SDL_RenderCopy(Default_rdr, StartMenu[0].texture, NULL, NULL);
+            SDL_RenderCopy(Default_rdr, StartWords.texture, NULL, &StartWords.pos);
+            SDL_RenderCopy(Default_rdr, StartChess.texture, NULL, &StartChess.pos);
+            SDL_RenderCopy(Default_rdr, StartButton.texture, NULL, &StartButtonPos[0]);
             break;
         case launching:
             // 绘制按下按键后画面
-            SDL_RenderCopy(Default_rdr, StartMenu[1].texture, NULL, NULL);
+            SDL_RenderCopy(Default_rdr, StartWords.texture, NULL, &StartWords.pos);
+            SDL_RenderCopy(Default_rdr, StartChess.texture, NULL, &StartChess.pos);
+            SDL_RenderCopy(Default_rdr, StartButton.texture, NULL, &StartButtonPos[1]);
             break;
         case confirm_launch:
             // 回显一段时间原画面
-            SDL_RenderCopy(Default_rdr, StartMenu[0].texture, NULL, NULL);
-            SDL_RenderPresent(Default_rdr);
-            SDL_Delay(100);
-            game.mode = common;
+            SDL_RenderCopy(Default_rdr, StartWords.texture, NULL, &StartWords.pos);
+            SDL_RenderCopy(Default_rdr, StartChess.texture, NULL, &StartChess.pos);
+            SDL_RenderCopy(Default_rdr, StartButton.texture, NULL, &StartButtonPos[0]);
             break;
         case pause_menu:
+            // 绘制暂停信息
+            SDL_RenderCopy(Default_rdr, PauseMsg.texture, NULL, &PauseMsg.pos);
             // 绘制暂停菜单
             SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
             SDL_RenderCopy(Default_rdr, QuitButton.texture, NULL, &QuitButton.pos);
             SDL_RenderCopy(Default_rdr, ResumeButton.texture, NULL, &ResumeButton.pos);
+            // 绘制计分板
+            ShowMark();
             break;
         case lose_menu:
+            // 绘制暂停信息
+            SDL_RenderCopy(Default_rdr, FailMsg.texture, NULL, &FailMsg.pos);
             // 绘制失败菜单
             SDL_RenderCopy(Default_rdr, AgainButton.texture, NULL, &AgainButton.pos);
             SDL_RenderCopy(Default_rdr, QuitButton.texture, NULL, &QuitButton.pos);
@@ -517,8 +520,14 @@ void DrawGame() {
             // 绘制计分板
             ShowMark();
     }
-    // 统一显示
+    // 统一显示, 防止RenderPresent复用造成闪屏
     SDL_RenderPresent(Default_rdr);
+    if (game.mode == confirm_launch) {
+        SDL_Delay(100);
+        game.mode = common;
+        SDL_Log("Game Start!\n");
+    }
+    // 及时释放内存
     if (game.mode != start_menu && game.mode != pause_menu
         && game.mode != lose_menu && game.mode != launching) {
         // SDL不能free空指针
