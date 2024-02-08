@@ -105,7 +105,7 @@ TTF_Font *DefaultFont;
 // plat_index指示当前使用的平台, position_index指示生成平台的位置
 int plat_index = 0, position_index = 0;
 int last_mode = common;
-int prev_chess_pos_x = 0;
+int previous_chess_pos_x = 0;
 
 // 函数
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y);
@@ -401,7 +401,7 @@ void Jump() {
     // 跳跃动画(按照运动的数学建模修改棋子坐标数值)
     static double dt = 0;   // dt: 运动参数
     if (Chess.pos.y <= DEFAULT_CHESS_POS_Y) {
-        Chess.pos.x = prev_chess_pos_x + (int) (player.Vx * dt);
+        Chess.pos.x = previous_chess_pos_x + (int) (player.Vx * dt);
         Chess.pos.y = DEFAULT_CHESS_POS_Y - (int) ((player.Vy * dt - player.gravity * dt * dt / 2) * 2);
         dt += 0.05;
     } else {
@@ -418,7 +418,7 @@ void Jump() {
 void GainMomentum() {
     // 实现蓄力, 其中同时需要实现读条
     // 蓄力方式 -> 更改CurJumpDistance
-    prev_chess_pos_x = Chess.pos.x;
+    previous_chess_pos_x = Chess.pos.x;
     Bar.pos.x = Chess.pos.x - 40;
     Bar.pos.y = Chess.pos.y - 40;
     BarWrapper.pos.x = Bar.pos.x;
