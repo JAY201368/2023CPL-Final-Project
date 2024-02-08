@@ -4,6 +4,7 @@
 #include "SDL2/SDL_ttf.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include <time.h>
 
 // 宏
 // 初始游戏窗口大小设定
@@ -82,33 +83,95 @@ IMG CurMark, HistoryMark;
 IMG StartWords;
 IMG StartChess;
 IMG FailMsg, PauseMsg;
-// TODO: 调整开始菜单元素位置
+IMG LevelMsg[3];
+
 SDL_Rect StartButtonPos[2] = {
         {170, 656, 280, 90},
         {185, 656, 260, 80}
 };
 SDL_Rect DefaultPlatformPos[2] = {
-        {104, 450, 160, 160},
-        {389, 450, 160, 160},
+        {100, 450, 160, 160},
+        {289, 450, 160, 160},
 };
 // TODO: 丰富平台位置
 SDL_Rect ExtendedPlatformPos[10] = {
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
-        {0, 450, 160, 160},
+        {250, 450, 160, 160},
+        {300, 450, 160, 160},
+        {320, 450, 160, 160},
+        {350, 450, 140, 140},
+        {380, 450, 140, 140},
+        {400, 450, 140, 140},
+        {420, 450, 120, 120},
+        {440, 450, 120, 120},
+        {450, 450, 120, 120},
+        {460, 450, 120, 120},
 };
 TTF_Font *DefaultFont;
-// plat_index指示当前使用的平台
-int plat_index = 0;
+// plat_index指示当前使用的平台, position_index指示生成平台的位置
+int plat_index = 0, position_index = 0;
 int last_mode = common;
 int prev_chess_pos_x = 0;
+
+// 函数
+bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y);
+
+int InitSDL();
+
+int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name);
+
+void InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color);
+
+int InitAllPics();
+
+void DestroyPic(IMG pic);
+
+void DestroyAll();
+
+void RestartGame();
+
+int GetRandomIndex();
+
+void MoveMap();
+
+void CheckLanded();
+
+void Jump();
+
+void GainMomentum();
+
+void ModeControl();
+
+void UpdateData();
+
+void ShowMark();
+
+void DrawGame();
+
+int main() {
+    // 初始化SDL子系统
+    InitSDL();
+    // 加载所有图片, 显示开始菜单
+    InitAllPics();
+    // 等待开始
+//    WaitForStart();
+    // 游戏主体: 两个阶段(处理事件->渲染下一帧)
+    // 将几个菜单放在事件函数中实现, 作为分支任务
+    RestartGame();
+    game.mode = start_menu;
+    while (game.end_game == false) {
+        // 接收操作, 更改模式
+        ModeControl();
+        // 更新参数
+        UpdateData();
+        // 更新动画
+        DrawGame();
+        // 控制帧率
+        SDL_Delay(4);
+    }
+    // 有开就有关
+    DestroyAll();
+    return 0;
+}
 
 // 函数
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
@@ -154,6 +217,12 @@ int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
     return 0;
 }
 
+void InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color) {
+    word->surface = TTF_RenderText_Blended(DefaultFont, msg, color);
+    word->texture = SDL_CreateTextureFromSurface(Default_rdr, word->surface);
+    word->pos = position;
+}
+
 int InitAllPics() {
     // 为所有图片资源分配surface和texture
     // 开始菜单贴图
@@ -173,20 +242,20 @@ int InitAllPics() {
     DefaultFont = TTF_OpenFont("res/GenshinDefault.ttf", 50);
     CurMark.pos = (SDL_Rect) {20, 20, 100, 50};
     HistoryMark.pos = (SDL_Rect) {20, 100, 200, 50};
-    PauseMsg.surface = TTF_RenderText_Blended(DefaultFont, "Game Paused", (SDL_Color) {255, 255, 255, 255});
-    PauseMsg.texture = SDL_CreateTextureFromSurface(Default_rdr, PauseMsg.surface);
-    FailMsg.surface = TTF_RenderText_Blended(DefaultFont, "You Lose", (SDL_Color) {255, 255, 255, 255});
-    FailMsg.texture = SDL_CreateTextureFromSurface(Default_rdr, FailMsg.surface);
-    PauseMsg.pos = (SDL_Rect) {200, 300, 200, 60};
-    FailMsg.pos = (SDL_Rect) {200, 300, 200, 100};
-    // 计分板贴图
+    for (int i = 0; i < 3; ++i) {
+        char *msg = malloc(10);
+        sprintf(msg, "Level %d", i + 1);
+        InitWordMsg(&(LevelMsg[i]), msg, (SDL_Rect) {500, 20, 100, 50}, (SDL_Color) {255, 255, 255, 255});
+        free(msg);
+    }
+    InitWordMsg(&PauseMsg, "Game Paused", (SDL_Rect) {200, 300, 200, 60}, (SDL_Color) {255, 255, 255, 255});
+    InitWordMsg(&FailMsg, "You Lose", (SDL_Rect) {200, 300, 200, 60}, (SDL_Color) {255, 255, 255, 255});
     // 平台贴图
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 10; ++i) {
         char filename[30] = {0};
         // 生成文件名
-        sprintf(filename, "res/platforms/platform_%d.png", i + 1);
+        sprintf(filename, "res/platforms/platform_%d.png", i);
         InitPic(&Platform[i].surface, &Platform[i].texture, filename);
-        Platform[i].pos = DefaultPlatformPos[i % 2];
     }
     // 玩家棋子贴图
     InitPic(&Chess.surface, &Chess.texture, "res/chess.png");
@@ -194,7 +263,6 @@ int InitAllPics() {
     // 蓄力条
     Bar.pos = (SDL_Rect) {DEFAULT_CHESS_POS_X - 40, DEFAULT_CHESS_POS_Y - 40, 0, 10};
     BarWrapper.pos = (SDL_Rect) {DEFAULT_CHESS_POS_X - 40, DEFAULT_CHESS_POS_Y - 40, 120, 10};
-    // bonus(彩蛋)贴图
     return 0;
 }
 
@@ -226,9 +294,11 @@ void DestroyAll() {
 void RestartGame() {
     // 重开
     // 重置游戏状态
-    game.mode = common;
-    game.end_game = false;
-    game.score = 0;
+    game = (GAME) {
+            .mode = common,
+            .end_game = false,
+            .score = 0,
+    };
     // 重置玩家数值
     Chess.pos.x = DEFAULT_CHESS_POS_X;
     Chess.pos.y = DEFAULT_CHESS_POS_Y;
@@ -247,7 +317,19 @@ void RestartGame() {
     DstPlatform.pos = DefaultPlatformPos[1];
 }
 
-// TODO: 丰富平台生成位置以及地图移动方式
+int GetRandomIndex() {
+    long long index;
+    srand((unsigned int) time(NULL));
+    if (game.score <= 10) {
+        index = rand() % 3;
+    } else if (10 < game.score && game.score <= 20) {
+        index = rand() % 6;
+    } else {
+        index = rand() % 10;
+    }
+    return (int) index;
+}
+
 void MoveMap() {
     Chess.pos.y = 400;
     if (DstPlatform.pos.x >= DefaultPlatformPos[0].x) {
@@ -257,10 +339,12 @@ void MoveMap() {
     } else {
         // 移动完毕, 加载下一个平台
         SrcPlatform = DstPlatform;
-        plat_index = (plat_index + 1) % 7;
-        DstPlatform = Platform[(plat_index + 1) % 7];
-        SrcPlatform.pos = DefaultPlatformPos[0];
-        DstPlatform.pos = DefaultPlatformPos[1];
+        // 游戏难度依目前得分划分档次
+        // 生成随机数
+        plat_index = GetRandomIndex();
+        DstPlatform = Platform[plat_index];
+        position_index = GetRandomIndex();
+        DstPlatform.pos = ExtendedPlatformPos[position_index];
         game.mode = common;
     }
 }
@@ -278,10 +362,17 @@ void CheckLanded() {
     if (landed == true) {
         SDL_Log("Nice Jump!\n");
         // 加分
-        if (plat_index == 2 || plat_index == 5) {
+        if (plat_index >= 7) {
+            // 圆形平台加两分
+            game.score += 2;
+        } else if (plat_index < 7) {
+            // 方形平台加一分
+            game.score++;
+        }
+        if (position_index >= 7) {
             // 小平台加两分
             game.score += 2;
-        } else {
+        } else if (position_index < 7) {
             // 大平台加一分
             game.score++;
         }
@@ -372,6 +463,7 @@ void ModeControl() {
                         || game.mode == gaining_momentum || game.mode == landing
                         || game.mode == move_map) {
                         SDL_Log("Game Paused\n");
+                        // 保存暂停前状态
                         last_mode = game.mode;
                         game.mode = pause_menu;
                     }
@@ -382,7 +474,7 @@ void ModeControl() {
                 if (MainEvent.key.keysym.sym == SDLK_SPACE) {
                     if (game.mode == gaining_momentum) {
                         SDL_Log("Jump!\n");
-                        Jump();
+                        game.mode = jumping;
                     }
                 }
                 break;
@@ -445,12 +537,17 @@ void ShowMark() {
     sprintf(cur_mark, "Score: %d", game.score);
     sprintf(history_mark, "History High: %d", game.history_high);
     // 为防止内存泄漏, 记得及时清除
-    CurMark.surface = TTF_RenderText_Blended(DefaultFont, cur_mark, (SDL_Color) {255, 255, 255, 255});
-    CurMark.texture = SDL_CreateTextureFromSurface(Default_rdr, CurMark.surface);
-    HistoryMark.surface = TTF_RenderText_Blended(DefaultFont, history_mark, (SDL_Color) {235, 169, 104, 255});
-    HistoryMark.texture = SDL_CreateTextureFromSurface(Default_rdr, HistoryMark.surface);
+    InitWordMsg(&CurMark, cur_mark, CurMark.pos, (SDL_Color) {255, 255, 255, 255});
+    InitWordMsg(&HistoryMark, history_mark, HistoryMark.pos, (SDL_Color) {235, 169, 104, 255});
     SDL_RenderCopy(Default_rdr, CurMark.texture, NULL, &CurMark.pos);
     SDL_RenderCopy(Default_rdr, HistoryMark.texture, NULL, &HistoryMark.pos);
+    if (game.score <= 10) {
+        SDL_RenderCopy(Default_rdr, LevelMsg[0].texture, NULL, &LevelMsg[0].pos);
+    } else if (10 < game.score && game.score <= 30) {
+        SDL_RenderCopy(Default_rdr, LevelMsg[1].texture, NULL, &LevelMsg[1].pos);
+    } else {
+        SDL_RenderCopy(Default_rdr, LevelMsg[2].texture, NULL, &LevelMsg[2].pos);
+    }
     free(cur_mark), free(history_mark);
 }
 
@@ -500,8 +597,8 @@ void DrawGame() {
             break;
         case gaining_momentum:
             // 绘制平台
-            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &DefaultPlatformPos[0]);
-            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DefaultPlatformPos[1]);
+            SDL_RenderCopy(Default_rdr, SrcPlatform.texture, NULL, &SrcPlatform.pos);
+            SDL_RenderCopy(Default_rdr, DstPlatform.texture, NULL, &DstPlatform.pos);
             // 绘制棋子
             SDL_RenderCopy(Default_rdr, Chess.texture, NULL, &Chess.pos);
             // 绘制蓄力条
@@ -536,30 +633,4 @@ void DrawGame() {
         SDL_DestroyTexture(CurMark.texture);
         SDL_DestroyTexture(HistoryMark.texture);
     }
-}
-
-int main() {
-    // 初始化SDL子系统
-    InitSDL();
-    // 加载所有图片, 显示开始菜单
-    InitAllPics();
-    // 等待开始
-//    WaitForStart();
-    // 游戏主体: 两个阶段(处理事件->渲染下一帧)
-    // 将几个菜单放在事件函数中实现, 作为分支任务
-    RestartGame();
-    game.mode = start_menu;
-    while (game.end_game == false) {
-        // 接收操作, 更改模式
-        ModeControl();
-        // 更新参数
-        UpdateData();
-        // 更新动画
-        DrawGame();
-        // 控制帧率
-        SDL_Delay(4);
-    }
-    // 有开就有关
-    DestroyAll();
-    return 0;
 }
