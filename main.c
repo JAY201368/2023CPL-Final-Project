@@ -15,7 +15,7 @@
 #define DEFAULT_CHESS_POS_X 160
 #define DEFAULT_CHESS_POS_Y 400
 #define DEFAULT_GRAVITY 12
-#define DEFAULT_MAX_VX 40
+#define DEFAULT_MAX_VX 60
 #define DEFAULT_VY 50
 #define DEFAULT_VX_INC_SPEED 1
 
@@ -73,15 +73,13 @@ GAME game;
 SDL_Window *win;
 SDL_Event MainEvent;
 SDL_Renderer *Default_rdr = NULL;
-IMG PauseMenu;
 IMG Platform[10];
 IMG Chess;
 IMG SrcPlatform, DstPlatform;
 IMG StartButton, AgainButton, QuitButton, ResumeButton;
 IMG Bar, BarWrapper;
 IMG CurMark, HistoryMark;
-IMG StartWords;
-IMG StartChess;
+IMG StartWords, StartChess;
 IMG FailMsg, PauseMsg;
 IMG LevelMsg[3];
 
@@ -89,22 +87,19 @@ SDL_Rect StartButtonPos[2] = {
         {170, 656, 280, 90},
         {185, 656, 260, 80}
 };
-SDL_Rect DefaultPlatformPos[2] = {
-        {100, 450, 160, 160},
-        {289, 450, 160, 160},
-};
+SDL_Rect DefaultSrcPlatformPos = {80, 450, 160, 160};
 // TODO: 丰富平台位置
 SDL_Rect ExtendedPlatformPos[10] = {
         {250, 450, 160, 160},
         {300, 450, 160, 160},
         {320, 450, 160, 160},
-        {350, 450, 140, 140},
-        {380, 450, 140, 140},
-        {400, 450, 140, 140},
-        {420, 450, 120, 120},
-        {440, 450, 120, 120},
-        {450, 450, 120, 120},
-        {460, 450, 120, 120},
+        {350, 450, 130, 130},
+        {380, 450, 130, 130},
+        {400, 450, 130, 130},
+        {420, 450, 100, 100},
+        {440, 450, 100, 100},
+        {450, 450, 100, 100},
+        {460, 450, 100, 100},
 };
 TTF_Font *DefaultFont;
 // plat_index指示当前使用的平台, position_index指示生成平台的位置
@@ -115,35 +110,35 @@ int prev_chess_pos_x = 0;
 // 函数
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y);
 
+int GetRandomIndex();
+
 int InitSDL();
 
 int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name);
 
-void InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color);
+int InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color);
 
 int InitAllPics();
+
+void RestartGame();
 
 void DestroyPic(IMG pic);
 
 void DestroyAll();
 
-void RestartGame();
-
-int GetRandomIndex();
-
-void MoveMap();
-
-void CheckLanded();
+void GainMomentum();
 
 void Jump();
 
-void GainMomentum();
+void CheckLanded();
+
+void MoveMap();
+
+void ShowMark();
 
 void ModeControl();
 
 void UpdateData();
-
-void ShowMark();
 
 void DrawGame();
 
@@ -217,10 +212,13 @@ int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
     return 0;
 }
 
-void InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color) {
+int InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color) {
     word->surface = TTF_RenderText_Blended(DefaultFont, msg, color);
+    CHECK_ERROR(word->surface);
     word->texture = SDL_CreateTextureFromSurface(Default_rdr, word->surface);
+    CHECK_ERROR(word->texture);
     word->pos = position;
+    return 0;
 }
 
 int InitAllPics() {
@@ -274,7 +272,6 @@ void DestroyPic(IMG pic) {
 void DestroyAll() {
     DestroyPic(StartChess);
     DestroyPic(StartWords);
-    DestroyPic(PauseMenu);
     DestroyPic(Chess);
     DestroyPic(SrcPlatform);
     DestroyPic(DstPlatform);
@@ -282,6 +279,11 @@ void DestroyAll() {
     DestroyPic(AgainButton);
     DestroyPic(QuitButton);
     DestroyPic(ResumeButton);
+    DestroyPic(FailMsg);
+    DestroyPic(PauseMsg);
+    for (int i = 0; i < 3; ++i) {
+        DestroyPic(LevelMsg[i]);
+    }
     for (int i = 0; i < 10; ++i) {
         DestroyPic(Platform[i]);
     }
@@ -313,13 +315,14 @@ void RestartGame() {
     SrcPlatform = Platform[plat_index];
     DstPlatform = Platform[plat_index + 1];
     // 重置平台位置
-    SrcPlatform.pos = DefaultPlatformPos[0];
-    DstPlatform.pos = DefaultPlatformPos[1];
+    SrcPlatform.pos = DefaultSrcPlatformPos;
+    DstPlatform.pos = ExtendedPlatformPos[0];
+    // 初始化随机数种子
+    srand((unsigned int) time(NULL));
 }
 
 int GetRandomIndex() {
     long long index;
-    srand((unsigned int) time(NULL));
     if (game.score <= 10) {
         index = rand() % 3;
     } else if (10 < game.score && game.score <= 20) {
@@ -332,7 +335,7 @@ int GetRandomIndex() {
 
 void MoveMap() {
     Chess.pos.y = 400;
-    if (DstPlatform.pos.x >= DefaultPlatformPos[0].x) {
+    if (DstPlatform.pos.x >= DefaultSrcPlatformPos.x) {
         SrcPlatform.pos.x -= 15;
         DstPlatform.pos.x -= 5;
         Chess.pos.x -= 5;
@@ -349,12 +352,11 @@ void MoveMap() {
     }
 }
 
-// TODO: 优化碰撞检测
 void CheckLanded() {
     bool landed = false;
     // 判断是否成功着陆, 即碰撞检测
-    if (DstPlatform.pos.x <= Chess.pos.x + Chess.pos.w &&
-        Chess.pos.x <= DstPlatform.pos.x + DstPlatform.pos.w) {
+    if (DstPlatform.pos.x <= Chess.pos.x + Chess.pos.w / 2 &&
+        Chess.pos.x + Chess.pos.w / 2 <= DstPlatform.pos.x + DstPlatform.pos.w) {
         landed = true;
     } else {
         landed = false;
@@ -424,12 +426,12 @@ void GainMomentum() {
     BarWrapper.pos.x = Bar.pos.x;
     if (player.Vx <= player.MaxVx) {
         player.Vx += DEFAULT_VX_INC_SPEED;
-        Bar.pos.w += 3;
+        Bar.pos.w += 2;
         if (Bar.pos.w >= 120) {
             Bar.pos.w = 120;
         }
         SDL_Log("Current Vx = %f", player.Vx);
-        SDL_Delay(40);
+        SDL_Delay(30);
     } else {
         player.Vx = player.MaxVx;
     }
@@ -548,6 +550,9 @@ void ShowMark() {
     } else {
         SDL_RenderCopy(Default_rdr, LevelMsg[2].texture, NULL, &LevelMsg[2].pos);
     }
+    // 防止内存泄漏
+    DestroyPic(CurMark);
+    DestroyPic(HistoryMark);
     free(cur_mark), free(history_mark);
 }
 
@@ -625,12 +630,9 @@ void DrawGame() {
         SDL_Log("Game Start!\n");
     }
     // 及时释放内存
-    if (game.mode != start_menu && game.mode != pause_menu
-        && game.mode != lose_menu && game.mode != launching) {
-        // SDL不能free空指针
-        SDL_FreeSurface(CurMark.surface);
-        SDL_FreeSurface(HistoryMark.surface);
-        SDL_DestroyTexture(CurMark.texture);
-        SDL_DestroyTexture(HistoryMark.texture);
-    }
+//    if (game.mode != start_menu && game.mode != launching
+//        && game.mode != confirm_launch) {
+//        // SDL不能free空指针
+//
+//    }
 }
