@@ -296,11 +296,9 @@ void DestroyAll() {
 void RestartGame() {
     // 重开
     // 重置游戏状态
-    game = (GAME) {
-            .mode = common,
-            .end_game = false,
-            .score = 0,
-    };
+    game.mode = common;
+    game.end_game = false;
+    game.score = 0;
     // 重置玩家数值
     Chess.pos.x = DEFAULT_CHESS_POS_X;
     Chess.pos.y = DEFAULT_CHESS_POS_Y;
@@ -629,10 +627,4 @@ void DrawGame() {
         game.mode = common;
         SDL_Log("Game Start!\n");
     }
-    // 及时释放内存
-//    if (game.mode != start_menu && game.mode != launching
-//        && game.mode != confirm_launch) {
-//        // SDL不能free空指针
-//
-//    }
 }
