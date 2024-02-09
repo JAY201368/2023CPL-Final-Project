@@ -323,7 +323,7 @@ int GetRandomIndex() {
     long long index;
     if (game.score <= 10) {
         index = rand() % 3;
-    } else if (10 < game.score && game.score <= 20) {
+    } else if (10 < game.score && game.score <= 30) {
         index = rand() % 6;
     } else {
         index = rand() % 10;
@@ -362,6 +362,7 @@ void CheckLanded() {
     if (landed == true) {
         SDL_Log("Nice Jump!\n");
         // 加分
+        // 平台形状加分
         if (plat_index >= 7) {
             // 圆形平台加两分
             game.score += 2;
@@ -369,11 +370,17 @@ void CheckLanded() {
             // 方形平台加一分
             game.score++;
         }
+        // 平台大小加分
         if (position_index >= 7) {
             // 小平台加两分
             game.score += 2;
         } else if (position_index < 7) {
             // 大平台加一分
+            game.score++;
+        }
+        // 着陆在中间位置额外加分
+        if (DstPlatform.pos.x + DstPlatform.pos.w / 3 <= Chess.pos.x + Chess.pos.w / 2 &&
+            Chess.pos.x + Chess.pos.w / 2 <= DstPlatform.pos.x + DstPlatform.pos.w - DstPlatform.pos.w / 3) {
             game.score++;
         }
         game.history_high = (game.score >= game.history_high) ? game.score : game.history_high;
