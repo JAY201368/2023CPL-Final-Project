@@ -19,14 +19,6 @@
 #define DEFAULT_VY 50
 #define DEFAULT_VX_INC_SPEED 1
 
-// 函数宏
-// 处理SDL错误用宏封装简化
-#define CHECK_ERROR(name)                                   \
-    if (!(name)) {                                          \
-        SDL_Log("Failed because of: %s\n", SDL_GetError()); \
-        return 1;                                           \
-    }
-
 // 枚举
 // 几个游戏状态: 菜单栏 / 游戏中, 通过枚举类型实现
 enum status {
@@ -108,6 +100,8 @@ int last_mode = common;
 int previous_chess_pos_x = 0;
 
 // 函数
+void CheckError(void *name);
+
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y);
 
 int GetRandomIndex();
@@ -196,27 +190,27 @@ int InitSDL() {
                            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            WINDOW_WIDTH, WINDOW_HEIGHT,
                            SDL_WINDOW_SHOWN);
-    CHECK_ERROR(win);
+    CheckError(win);
     // 初始化win窗口的渲染器(画笔), 自动选择, 硬件加速
     Default_rdr = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-    CHECK_ERROR(Default_rdr);
+    CheckError(Default_rdr);
 
     return 0;
 }
 
 int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
     *surf = IMG_Load(file_name);
-    CHECK_ERROR(*surf);
+    CheckError(*surf);
     *text = SDL_CreateTextureFromSurface(Default_rdr, *surf);
-    CHECK_ERROR(*text);
+    CheckError(*text);
     return 0;
 }
 
 int InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color) {
     word->surface = TTF_RenderText_Blended(DefaultFont, msg, color);
-    CHECK_ERROR(word->surface);
+    CheckError(word->surface);
     word->texture = SDL_CreateTextureFromSurface(Default_rdr, word->surface);
-    CHECK_ERROR(word->texture);
+    CheckError(word->texture);
     word->pos = position;
     return 0;
 }
@@ -435,7 +429,7 @@ void GainMomentum() {
         if (Bar.pos.w >= 120) {
             Bar.pos.w = 120;
         }
-        SDL_Log("Current Vx = %f", player.Vx);
+        SDL_Log("Current Vx = %.1f", player.Vx);
         SDL_Delay(30);
     } else {
         player.Vx = player.MaxVx;
@@ -633,5 +627,11 @@ void DrawGame() {
         SDL_Delay(100);
         game.mode = common;
         SDL_Log("Game Start!\n");
+    }
+}
+
+void CheckError(void *name) {
+    if (!(name)) {
+        SDL_Log("Failed because of: %s\n", SDL_GetError());
     }
 }

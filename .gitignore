@@ -14,3 +14,9 @@ cmake-build-debug/
 # Test files
 test*
 .cache/
+
+#videos
+VideoLogs/
+
+#archived files
+*.zip
