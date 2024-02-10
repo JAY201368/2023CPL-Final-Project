@@ -8,8 +8,8 @@
 
 // 宏
 // 初始游戏窗口大小设定
-#define WINDOW_WIDTH 620
-#define WINDOW_HEIGHT 822
+int const WINDOW_WIDTH = 620;
+int const WINDOW_HEIGHT = 822;
 // 初始数值设定
 // TODO: 完善合理的初始数值设定
 #define DEFAULT_CHESS_POS_X 160
