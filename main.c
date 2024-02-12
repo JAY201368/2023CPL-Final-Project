@@ -31,7 +31,7 @@ enum status {
     gaining_momentum,
     jumping,
     landing,
-    move_map
+    moving_map
 };
 
 // 结构
@@ -64,7 +64,7 @@ GAME game;
 // SDL相关对象
 SDL_Window *win;
 SDL_Event MainEvent;
-SDL_Renderer *Default_rdr = NULL;
+SDL_Renderer *Default_rdr;
 IMG Platform[10];
 IMG Chess;
 IMG SrcPlatform, DstPlatform;
@@ -95,7 +95,7 @@ SDL_Rect ExtendedPlatformPos[10] = {
 };
 TTF_Font *DefaultFont;
 // plat_index指示当前使用的平台, position_index指示生成平台的位置
-int plat_index = 0, position_index = 0;
+int kind_index = 0, position_index = 0;
 int last_mode = common;
 int previous_chess_pos_x = 0;
 
@@ -141,11 +141,10 @@ int main() {
     InitSDL();
     // 加载所有图片, 显示开始菜单
     InitAllPics();
-    // 等待开始
-//    WaitForStart();
     // 游戏主体: 两个阶段(处理事件->渲染下一帧)
     // 将几个菜单放在事件函数中实现, 作为分支任务
     RestartGame();
+    // 特判开始菜单
     game.mode = start_menu;
     while (game.end_game == false) {
         // 接收操作, 更改模式
@@ -164,13 +163,15 @@ int main() {
 
 // 函数
 bool MyPointInRect(SDL_Rect *ButtonPos, int x, int y) {
+    bool ReturnValue = false;
     // 为判断点击按钮而造的轮子
     if (ButtonPos->x <= x && x <= ButtonPos->x + ButtonPos->w
         && ButtonPos->y <= y && y <= ButtonPos->y + ButtonPos->h) {
-        return true;
+        ReturnValue = true;
     } else {
-        return false;
+        ReturnValue = false;
     }
+    return ReturnValue;
 }
 
 // SDL相关函数
@@ -185,7 +186,7 @@ int InitSDL() {
         return 1;
     }
     // 建立窗口
-    // 注意: 由于macOS平台本身高DPI功能
+    // 注意: 由于macOS平台本身高DPI功能, 若启用高分辨率选项则渲染图像时单个像素大小会改变, 造成图像坐标异常
     win = SDL_CreateWindow("Jump, Jump!",
                            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            WINDOW_WIDTH, WINDOW_HEIGHT,
@@ -194,7 +195,6 @@ int InitSDL() {
     // 初始化win窗口的渲染器(画笔), 自动选择, 硬件加速
     Default_rdr = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     CheckError(Default_rdr);
-
     return 0;
 }
 
@@ -203,6 +203,8 @@ int InitPic(SDL_Surface **surf, SDL_Texture **text, char *file_name) {
     CheckError(*surf);
     *text = SDL_CreateTextureFromSurface(Default_rdr, *surf);
     CheckError(*text);
+    // 创建texture之后直接销毁surface, 减小内存开支
+    SDL_FreeSurface(*surf);
     return 0;
 }
 
@@ -212,6 +214,8 @@ int InitWordMsg(IMG *word, char *msg, SDL_Rect position, SDL_Color color) {
     word->texture = SDL_CreateTextureFromSurface(Default_rdr, word->surface);
     CheckError(word->texture);
     word->pos = position;
+    // 销毁surface
+    SDL_FreeSurface(word->surface);
     return 0;
 }
 
@@ -259,7 +263,7 @@ int InitAllPics() {
 }
 
 void DestroyPic(IMG pic) {
-    SDL_FreeSurface(pic.surface);
+//    SDL_FreeSurface(pic.surface);
     SDL_DestroyTexture(pic.texture);
 }
 
@@ -303,9 +307,9 @@ void RestartGame() {
             .Vx = 0
     };
     // 重置平台款式
-    plat_index = 0;
-    SrcPlatform = Platform[plat_index];
-    DstPlatform = Platform[plat_index + 1];
+    kind_index = 0;
+    SrcPlatform = Platform[kind_index];
+    DstPlatform = Platform[kind_index + 1];
     // 重置平台位置
     SrcPlatform.pos = DefaultSrcPlatformPos;
     DstPlatform.pos = ExtendedPlatformPos[0];
@@ -314,7 +318,8 @@ void RestartGame() {
 }
 
 int GetRandomIndex() {
-    long long index;
+    // 根据游戏档位获取不同范围的随机数
+    int index;
     if (game.score <= 10) {
         index = rand() % 3;
     } else if (10 < game.score && game.score <= 30) {
@@ -322,12 +327,13 @@ int GetRandomIndex() {
     } else {
         index = rand() % 10;
     }
-    return (int) index;
+    return index;
 }
 
 void MoveMap() {
     Chess.pos.y = 400;
     if (DstPlatform.pos.x >= DefaultSrcPlatformPos.x) {
+        // 一快一慢移动
         SrcPlatform.pos.x -= 15;
         DstPlatform.pos.x -= 5;
         Chess.pos.x -= 5;
@@ -336,8 +342,8 @@ void MoveMap() {
         SrcPlatform = DstPlatform;
         // 游戏难度依目前得分划分档次
         // 生成随机数
-        plat_index = GetRandomIndex();
-        DstPlatform = Platform[plat_index];
+        kind_index = GetRandomIndex();
+        DstPlatform = Platform[kind_index];
         position_index = GetRandomIndex();
         DstPlatform.pos = ExtendedPlatformPos[position_index];
         game.mode = common;
@@ -346,7 +352,7 @@ void MoveMap() {
 
 void CheckLanded() {
     bool landed = false;
-    // 判断是否成功着陆, 即碰撞检测
+    // 判断是否成功着陆, 即碰撞检测(物理建模: 检测重心)
     if (DstPlatform.pos.x <= Chess.pos.x + Chess.pos.w / 2 &&
         Chess.pos.x + Chess.pos.w / 2 <= DstPlatform.pos.x + DstPlatform.pos.w) {
         landed = true;
@@ -357,10 +363,10 @@ void CheckLanded() {
         SDL_Log("Nice Jump!\n");
         // 加分
         // 平台形状加分
-        if (plat_index >= 7) {
+        if (kind_index >= 7) {
             // 圆形平台加两分
             game.score += 2;
-        } else if (plat_index < 7) {
+        } else if (kind_index < 7) {
             // 方形平台加一分
             game.score++;
         }
@@ -383,7 +389,7 @@ void CheckLanded() {
         player.Vx = 0;
         // 更改游戏模式
         SDL_Log("Moving Map\n");
-        game.mode = move_map;
+        game.mode = moving_map;
     } else {
         // 着陆失败, 显示结束菜单
         SDL_Log("You Lose\n");
@@ -398,12 +404,12 @@ void Jump() {
     // 实现跳跃
     // 修改状态, 还原数值
     Bar.pos.w = 0;
-    game.mode = jumping;
     // 跳跃动画(按照运动的数学建模修改棋子坐标数值)
     static double dt = 0;   // dt: 运动参数
     if (Chess.pos.y <= DEFAULT_CHESS_POS_Y) {
         Chess.pos.x = previous_chess_pos_x + (int) (player.Vx * dt);
         Chess.pos.y = DEFAULT_CHESS_POS_Y - (int) ((player.Vy * dt - player.gravity * dt * dt / 2) * 2);
+        // y方向位移乘2, 使得跳跃弧线更明显
         dt += 0.05;
     } else {
         // 重置参数并退出跳跃过程
@@ -419,6 +425,7 @@ void Jump() {
 void GainMomentum() {
     // 实现蓄力, 其中同时需要实现读条
     // 蓄力方式 -> 更改CurJumpDistance
+    // 保存先前的棋子位置(caller-save)
     previous_chess_pos_x = Chess.pos.x;
     Bar.pos.x = Chess.pos.x - 40;
     Bar.pos.y = Chess.pos.y - 40;
@@ -429,7 +436,7 @@ void GainMomentum() {
         if (Bar.pos.w >= 120) {
             Bar.pos.w = 120;
         }
-        SDL_Log("Current Vx = %.1f", player.Vx);
+//        SDL_Log("Current Vx = %.1f", player.Vx);
         SDL_Delay(30);
     } else {
         player.Vx = player.MaxVx;
@@ -452,8 +459,8 @@ void ModeControl() {
                 // 键盘点击事件, 处理玩家操作
                 if (MainEvent.key.keysym.sym == SDLK_SPACE) {
                     // 空格键
-                    // 游戏中(非跳跃过程中)按下空格 -> 蓄力
                     if (game.mode == common) {
+                        // 游戏中(非跳跃过程中)按下空格 -> 蓄力
                         SDL_Log("Gaining Momentum\n");
                         game.mode = gaining_momentum;
                     }
@@ -462,24 +469,25 @@ void ModeControl() {
                     // 游戏中(除菜单界面外)按下Esc -> 退出游戏, 进入暂停菜单
                     if (game.mode == common || game.mode == jumping
                         || game.mode == gaining_momentum || game.mode == landing
-                        || game.mode == move_map) {
+                        || game.mode == moving_map) {
                         SDL_Log("Game Paused\n");
-                        // 保存暂停前状态
+                        // 保存暂停前状态(caller-save)
                         last_mode = game.mode;
                         game.mode = pause_menu;
                     }
                 }
                 break;
             case SDL_KEYUP:
-                // 蓄力中松开空格键, 起跳
                 if (MainEvent.key.keysym.sym == SDLK_SPACE) {
                     if (game.mode == gaining_momentum) {
+                        // 蓄力中松开空格键, 起跳
                         SDL_Log("Jump!\n");
                         game.mode = jumping;
                     }
                 }
                 break;
-            case SDL_MOUSEBUTTONDOWN: // 鼠标点击事件, 用于处理点击菜单中的按钮
+            case SDL_MOUSEBUTTONDOWN:
+                // 鼠标点击事件, 用于处理点击菜单中的按钮
                 SDL_Log("Mouse Click Position: x = %d, y = %d", MainEvent.button.x, MainEvent.button.y);
                 int cur_x = MainEvent.button.x, cur_y = MainEvent.button.y;
                 if (game.mode == start_menu &&
@@ -490,7 +498,7 @@ void ModeControl() {
                 }
                 if (game.mode == lose_menu || game.mode == pause_menu) {
                     if (MyPointInRect(&QuitButton.pos, cur_x, cur_y)) {
-                        // 退出
+                        // 点击退出按钮
                         SDL_Log("Quit Game\n");
                         game.end_game = true;
                     } else if (MyPointInRect(&AgainButton.pos, cur_x, cur_y)) {
@@ -517,6 +525,7 @@ void ModeControl() {
 }
 
 void UpdateData() {
+    // 实时更新游戏数据, 实现动画效果
     if (game.mode == gaining_momentum) {
         GainMomentum();
     }
@@ -526,13 +535,14 @@ void UpdateData() {
     if (game.mode == landing) {
         CheckLanded();
     }
-    if (game.mode == move_map) {
+    if (game.mode == moving_map) {
         MoveMap();
     }
 }
 
 void ShowMark() {
     // 绘制计分板
+    // 获取当前分数
     char *cur_mark = malloc(sizeof(char) * 20);
     char *history_mark = malloc(sizeof(char) * 20);
     sprintf(cur_mark, "Score: %d", game.score);
