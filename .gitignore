@@ -1,6 +1,7 @@
 # Cmake build cache
 build/
 cmake-build-debug/
+CMakeFiles/
 
 # MacOS Cache
 .DS_Store
