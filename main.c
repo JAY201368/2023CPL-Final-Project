@@ -45,7 +45,7 @@ typedef struct player {
 } PLAYER;
 
 typedef struct game {
-    int mode;
+    enum status mode;
     int score;
     int history_high;
     bool end_game;
